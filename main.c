@@ -38,6 +38,10 @@ int main(int argc, char *argv[])
 		usage();
 
 	sdisp();
+	reset_send();
+	comstat_send();
+	retry_send();
+	hwconf_send();
 
 	return EXIT_SUCCESS;
 }

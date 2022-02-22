@@ -31,6 +31,30 @@ void delete_packet(struct decipkt *pkt)
 	free(pkt);
 }
 
+void pkt_hton(struct decipkt *pkt)
+{
+	pkt->hdr.magic = htole16(pkt->hdr.magic);
+	pkt->hdr.size = htole16(pkt->hdr.size);
+	pkt->hdr.category = htole32(pkt->hdr.category);
+	pkt->hdr.priority = htole16(pkt->hdr.priority);
+	pkt->hdr.rep = htole16(pkt->hdr.rep);
+	pkt->hdr.cid = htole16(pkt->hdr.cid);
+	pkt->hdr.seq = htole16(pkt->hdr.seq);
+	pkt->hdr.req = htole32(pkt->hdr.req);
+}
+
+void pkt_ntoh(struct decipkt *pkt)
+{
+	pkt->hdr.magic = le16toh(pkt->hdr.magic);
+	pkt->hdr.size = le16toh(pkt->hdr.size);
+	pkt->hdr.category = le32toh(pkt->hdr.category);
+	pkt->hdr.priority = le16toh(pkt->hdr.priority);
+	pkt->hdr.rep = le16toh(pkt->hdr.rep);
+	pkt->hdr.cid = le16toh(pkt->hdr.cid);
+	pkt->hdr.seq = le16toh(pkt->hdr.seq);
+	pkt->hdr.req = le32toh(pkt->hdr.req);
+}
+
 uint32_t cksum_calculate(struct decipkt *pkt)
 {
 	uint32_t sum = 0;
@@ -38,6 +62,7 @@ uint32_t cksum_calculate(struct decipkt *pkt)
 	if (dat == NULL)
 		err(1, "cksum_caluclate malloc");
 	memcpy(dat, &pkt->hdr, sizeof(pkt->hdr));
+	pkt_hton((struct decipkt *)dat);
 	for (int i=0; i<7; i++) {
 		sum += le32toh(dat[i]);
 	}
@@ -56,7 +81,7 @@ bool cksum_verify(struct decipkt *pkt)
 
 void pkt_print(struct decipkt *pkt)
 {
-	uint16_t size = le16toh(pkt->hdr.size);
+	uint16_t size = pkt->hdr.size;
 	printf("header:\n");
 	hexdump(&pkt->hdr, sizeof(pkt->hdr));
 	if (size > sizeof(pkt->hdr)) {
@@ -138,9 +163,9 @@ bool sdisp()
 	pkt->body = body;
 	*body = 0;
 	pkt->hdr.magic = DECI_MAGIC;
-	pkt->hdr.size = htole16(0x24);
+	pkt->hdr.size = 0x24;
 	pkt->hdr.category = CAT_TTY;
-	pkt->hdr.priority = htole16(0x3c);
+	pkt->hdr.priority = 0x3c;
 	pkt->hdr.req = REQ_SDISPCTRL;
 	return add_send_queue(pkt);
 }
@@ -152,9 +177,9 @@ bool reset_send()
 	pkt->body = body;
 	*body = htole32(1);
 	pkt->hdr.magic = DECI_MAGIC;
-	pkt->hdr.size = htole16(0x24);
+	pkt->hdr.size = 0x24;
 	pkt->hdr.category = CAT_A;
-	pkt->hdr.priority = htole16(0xa);
+	pkt->hdr.priority = 10;
 	pkt->hdr.req = REQ_TRESET;
 	return add_send_queue(pkt);
 }
@@ -165,8 +190,8 @@ void dump_packetq(struct decipkt *pkts[], int count)
 		struct decipkt *pkt = pkts[i];
 		printf("%3d:priority %04x, category %08x, tag %3d\n",
 			i,
-			le16toh(pkt->hdr.priority),
-			le32toh(pkt->hdr.category),
+			pkt->hdr.priority,
+			pkt->hdr.category,
 			pkt->hdr.tag
 		);
 	}
@@ -176,10 +201,10 @@ bool priority_over(struct decipkt *a, struct decipkt *b)
 {
 	if (!a || !b) return false;
 
-	uint16_t prio_a = le16toh(a->hdr.priority);
-	uint16_t prio_b = le16toh(b->hdr.priority);
-	uint32_t cat_a  = le32toh(a->hdr.category);
-	uint32_t cat_b  = le32toh(b->hdr.category);
+	uint16_t prio_a = a->hdr.priority;
+	uint16_t prio_b = b->hdr.priority;
+	uint32_t cat_a  = a->hdr.category;
+	uint32_t cat_b  = b->hdr.category;
 
 	if (prio_b < prio_a) return true;
 	if (prio_b > prio_a) return false;
@@ -196,7 +221,7 @@ void acknak(struct decipkt *pkt)
 		body[1] = 0;
 		thingy->body = body;
 		thingy->hdr.magic = DECI_MAGIC;
-		thingy->hdr.size = le16toh(0x22);
+		thingy->hdr.size = 0x22;
 		thingy->hdr.req = REQ_ZACKNAK;
 		add_send_queue(thingy);
 	}
@@ -212,14 +237,14 @@ void acknak(struct decipkt *pkt)
 		acktag = body[0];
 		ackcode = body[1];
 	}
-
+	// TODO
 }
 
 bool comstat_send()
 {
 	struct decipkt *pkt = new_packet();
 	pkt->hdr.magic = DECI_MAGIC;
-	pkt->hdr.size = htole16(0x20);
+	pkt->hdr.size = 0x20;
 	pkt->hdr.req = REQ_ZCOMSTAT;
 	return add_send_queue(pkt);
 }
@@ -228,7 +253,7 @@ bool retry_send()
 {
 	struct decipkt *pkt = new_packet();
 	pkt->hdr.magic = DECI_MAGIC;
-	pkt->hdr.size = htole16(0x20);
+	pkt->hdr.size = 0x20;
 	pkt->hdr.req = REQ_ZALLRETRY;
 	return add_send_queue(pkt);
 }
@@ -237,7 +262,7 @@ bool hwconf_send()
 {
 	struct decipkt *pkt = new_packet();
 	pkt->hdr.magic = DECI_MAGIC;
-	pkt->hdr.size = htole16(0x20);
+	pkt->hdr.size = 0x20;
 	pkt->hdr.req = REQ_ZHWCONFIG;
 	return add_send_queue(pkt);
 }
