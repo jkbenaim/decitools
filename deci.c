@@ -5,8 +5,11 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/socket.h>
 #include "deci.h"
 #include "hexdump.h"
+
+extern int sock;
 
 struct decipkt *send_queue[100];
 struct decipkt *wait_queue[100];
@@ -16,11 +19,16 @@ int packetsize;
 int needhwconf;
 int timeoutval;
 
-struct decipkt *new_packet()
+struct decipkt *new_packet(size_t body_size)
 {
-	struct decipkt *pkt = malloc(sizeof(struct decipkt));
+	struct decipkt *pkt = calloc(sizeof(struct decipkt), 1);
 	if (pkt == NULL) err(1, "new_packet malloc");
-	memset(pkt, 0, sizeof(struct decipkt));
+	if (body_size != 0) {
+		pkt->body = calloc(body_size, 1);
+		if (pkt->body == NULL) err(1, "new_packet body malloc");
+	}
+	pkt->hdr.magic = DECI_MAGIC;
+	pkt->hdr.size = sizeof(struct decihdr) + body_size;
 	return pkt;
 }
 
@@ -66,6 +74,7 @@ uint32_t cksum_calculate(struct decipkt *pkt)
 	for (int i=0; i<7; i++) {
 		sum += le32toh(dat[i]);
 	}
+	free(dat);
 	return htole32(sum);
 }
 
@@ -92,6 +101,29 @@ void pkt_print(struct decipkt *pkt)
 }
 
 bool add_queue(struct decipkt *pkt, struct decipkt *queue[], int *num_queue)
+{
+	// BIG HACK THIS SUCKS
+	struct decipkt mypkt;
+	memcpy(&mypkt, pkt, sizeof(mypkt));
+	cksum_fix(&mypkt);
+	pkt_hton(&mypkt);
+	//pkt_print(&mypkt);
+
+	ssize_t sz;
+	uint8_t *blob = malloc(pkt->hdr.size);
+	if (!blob) err(1, "in malloc");
+	memcpy(blob, &mypkt, 0x20);
+	if (pkt->body)
+		memcpy(blob + 0x20, mypkt.body, pkt->hdr.size - 0x20);
+
+	sz = send(sock, blob, pkt->hdr.size, 0);
+	if (sz == -1) err(1, "couldn't send");
+
+	delete_packet(pkt);
+	free(blob);
+	return true;
+}
+bool add_queue_real(struct decipkt *pkt, struct decipkt *queue[], int *num_queue)
 {
 	int slot;
 
@@ -156,29 +188,21 @@ bool del_wait_queue(struct decipkt *pkt)
 	return del_queue(pkt, wait_queue, &num_wait_queue);
 }
 
-bool sdisp()
+bool sdisp(uint32_t opt)
 {
-	struct decipkt *pkt = new_packet();
-	uint32_t *body = malloc(sizeof(uint32_t));
-	pkt->body = body;
-	*body = 0;
-	pkt->hdr.magic = DECI_MAGIC;
-	pkt->hdr.size = 0x24;
+	struct decipkt *pkt = new_packet(sizeof(uint32_t));
+	*(uint32_t *)pkt->body = htole32(opt);
 	pkt->hdr.category = CAT_TTY;
 	pkt->hdr.priority = 0x3c;
 	pkt->hdr.req = REQ_SDISPCTRL;
 	return add_send_queue(pkt);
 }
 
-bool reset_send()
+bool reset_send(uint32_t opt)
 {
-	struct decipkt *pkt = new_packet();
-	uint32_t *body = malloc(sizeof(uint32_t));
-	pkt->body = body;
-	*body = htole32(1);
-	pkt->hdr.magic = DECI_MAGIC;
-	pkt->hdr.size = 0x24;
-	pkt->hdr.category = CAT_A;
+	struct decipkt *pkt = new_packet(sizeof(uint32_t));
+	*(uint32_t *)pkt->body = htole32(opt);
+	pkt->hdr.category = CAT_TPKT;
 	pkt->hdr.priority = 10;
 	pkt->hdr.req = REQ_TRESET;
 	return add_send_queue(pkt);
@@ -215,13 +239,10 @@ bool priority_over(struct decipkt *a, struct decipkt *b)
 void acknak(struct decipkt *pkt)
 {
 	if (pkt->hdr.priority || pkt->hdr.category) {
-		struct decipkt *thingy = new_packet();
-		uint8_t *body = malloc(2);
+		struct decipkt *thingy = new_packet(2);
+		uint8_t *body = (uint8_t *)pkt->body;
 		body[0] = pkt->hdr.tag;
 		body[1] = 0;
-		thingy->body = body;
-		thingy->hdr.magic = DECI_MAGIC;
-		thingy->hdr.size = 0x22;
 		thingy->hdr.req = REQ_ZACKNAK;
 		add_send_queue(thingy);
 	}
@@ -242,27 +263,31 @@ void acknak(struct decipkt *pkt)
 
 bool comstat_send()
 {
-	struct decipkt *pkt = new_packet();
-	pkt->hdr.magic = DECI_MAGIC;
-	pkt->hdr.size = 0x20;
+	struct decipkt *pkt = new_packet(0);
 	pkt->hdr.req = REQ_ZCOMSTAT;
 	return add_send_queue(pkt);
 }
 
 bool retry_send()
 {
-	struct decipkt *pkt = new_packet();
-	pkt->hdr.magic = DECI_MAGIC;
-	pkt->hdr.size = 0x20;
+	struct decipkt *pkt = new_packet(0);
 	pkt->hdr.req = REQ_ZALLRETRY;
 	return add_send_queue(pkt);
 }
 
 bool hwconf_send()
 {
-	struct decipkt *pkt = new_packet();
-	pkt->hdr.magic = DECI_MAGIC;
-	pkt->hdr.size = 0x20;
+	struct decipkt *pkt = new_packet(0);
 	pkt->hdr.req = REQ_ZHWCONFIG;
+	return add_send_queue(pkt);
+}
+
+bool myacknak(uint8_t ack, uint8_t nak)
+{
+	struct decipkt *pkt = new_packet(2);
+	uint8_t *buf = (uint8_t *)pkt->body;
+	buf[0] = ack;
+	buf[1] = nak;
+	pkt->hdr.req = REQ_ZACKNAK;
 	return add_send_queue(pkt);
 }

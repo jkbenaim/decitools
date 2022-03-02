@@ -3,7 +3,7 @@ objects := $(patsubst %.c,%.o,$(wildcard *.c))
 
 libs:=
 
-EXTRAS += -fsanitize=undefined -fsanitize=null -fcf-protection=full -fstack-protector-all -fstack-check -Wimplicit-fallthrough -fanalyzer -Wall
+#EXTRAS += -fsanitize=undefined -fsanitize=null -fcf-protection=full -fstack-protector-all -fstack-check -Wimplicit-fallthrough -fanalyzer -Wall
 
 ifdef libs
 LDLIBS  += $(shell pkg-config --libs   ${libs})
