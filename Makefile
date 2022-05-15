@@ -1,17 +1,10 @@
 targets = decitools reset15 run15 bload15
 objects := $(patsubst %.c,%.o,$(wildcard *.c))
 
-libs:=
-
-EXTRAS += -fsanitize=undefined -fsanitize=null -fcf-protection=full -fstack-protector-all -fstack-check -Wimplicit-fallthrough -fanalyzer -Wall
-
-ifdef libs
-LDLIBS  += $(shell pkg-config --libs   ${libs})
-CFLAGS  += $(shell pkg-config --cflags ${libs})
-endif
+#EXTRAS += -fsanitize=undefined -fsanitize=null -fcf-protection=full -fstack-protector-all -fstack-check -Wimplicit-fallthrough -fanalyzer -Wall
 
 LDFLAGS += ${EXTRAS}
-CFLAGS  += -std=gnu2x -Og -ggdb ${EXTRAS}
+CFLAGS  += -ggdb ${EXTRAS}
 
 .PHONY: all
 all:	$(targets)
