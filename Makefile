@@ -1,4 +1,4 @@
-targets = reset15
+targets = decitools reset15 run15 bload15
 objects := $(patsubst %.c,%.o,$(wildcard *.c))
 
 libs:=
@@ -20,6 +20,14 @@ all:	$(targets)
 clean:
 	rm -f $(targets) $(objects)
 
-reset15: deci.o hexdump.o reset15.o mapfile.o
+decitools: deci.o hexdump.o decitools.o mapfile.o
 
+reset15: decitools
+	ln -s $< $@
+
+run15: decitools
+	ln -s $< $@
+
+bload15: decitools
+	ln -s $< $@
 
