@@ -357,7 +357,7 @@ bool idownload_send(uint32_t addr, uint32_t len, uint8_t *data)
 	return add_send_queue(pkt);
 }
 
-bool irun_send(struct psxexe_s *exe)
+bool irun_send_exe(struct psxexe_s *exe)
 {
 	if (!exe) return false;
 	struct decipkt *pkt = new_packet(sizeof(struct irun_body_s) + 11);
@@ -371,8 +371,26 @@ bool irun_send(struct psxexe_s *exe)
 	body->sp_fp_base = exe->sp_fp_base;
 	body->sp_fp_offset = exe->sp_fp_offset;
 	body->flag = htole32(1);
-	body->namelen = htole32(11);
-	strcpy((char *)body->name, "cdexec.exe");
+	body->namelen = htole32(strlen("whatever.exe") + 1);
+	strcpy((char *)body->name, "whatever.exe");
+
+	pkt->hdr.req = REQ_IRUN;
+	pkt->hdr.category = CAT_IPL;
+	pkt->hdr.priority = PRI_IPL;
+	pkt->hdr.tag = 0x99;
+	return add_send_queue(pkt);
+}
+
+bool irun_send(uint32_t pc, uint32_t sp)
+{
+	struct decipkt *pkt = new_packet(sizeof(struct irun_body_s) + 11);
+	struct irun_body_s *body = (struct irun_body_s *)pkt->body;
+	body->pc = htole32(pc);
+	body->sp_fp_base = htole32(sp);
+	body->sp_fp_offset = htole32(0);
+	body->flag = htole32(1);
+	body->namelen = htole32(strlen("whatever.exe") + 1);
+	strcpy((char *)body->name, "whatever.exe");
 
 	pkt->hdr.req = REQ_IRUN;
 	pkt->hdr.category = CAT_IPL;

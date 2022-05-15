@@ -171,6 +171,7 @@ bool myacknak(uint8_t ack, uint8_t nak);
 bool d_idk_send(uint32_t code);
 bool isetbootname_send(const char *name);
 bool idownload_send(uint32_t addr, uint32_t len, uint8_t *data);
-bool irun_send(struct psxexe_s *exe);
+bool irun_send_exe(struct psxexe_s *exe);
+bool irun_send(uint32_t pc, uint32_t sp);
 bool tmode_send(uint32_t mode);
 #endif

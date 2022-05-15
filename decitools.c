@@ -28,12 +28,15 @@ int sock;
 char *bload_filename = NULL;
 uint32_t bload_addr = ~0;
 char *exe_filename = NULL;
+uint32_t go_pc = ~0;
+uint32_t go_sp = 0x801ffff0;
 
 enum mode_e {
 	MODE_IDK,
 	MODE_RESET,
 	MODE_BLOAD,
 	MODE_RUN,
+	MODE_GO,
 } mode = MODE_IDK;
 
 bool upload(uint8_t *buf, unsigned n, unsigned addr)
@@ -89,7 +92,7 @@ bool run_exe(char *filename)
 	if (!sdisp(1)) return false;
 	if (!retry_send()) return false;
 
-	return irun_send(exe);
+	return irun_send_exe(exe);
 }
 
 bool decisetup(int *argc, char **argv[])
@@ -193,6 +196,9 @@ bool when_iplsvc_appears()
 	case MODE_RUN:
 		run_exe(exe_filename);
 		break;
+	case MODE_GO:
+		irun_send(go_pc, go_sp);
+		break;	
 	default:
 		errx(1, "unknown mode");
 		break;
@@ -206,6 +212,8 @@ bool when_iplsvc_disappears()
 	case MODE_RUN:
 		exit_on_ipl = true;
 		break;
+	case MODE_GO:
+		exit_on_ipl = true;
 	default:
 		break;
 	}
@@ -222,6 +230,8 @@ int main(int argc, char *argv[])
 		mode = MODE_BLOAD;
 	} else if (!strcmp(__progname, "run15")) {
 		mode = MODE_RUN;
+	} else if (!strcmp(__progname, "pgo15")) {
+		mode = MODE_GO;
 	} else {
 		errx(1, "unknown program name");
 	}
@@ -246,6 +256,14 @@ int main(int argc, char *argv[])
 		comstat_send();
 		bload_filename = argv[0];
 		bload_addr = strtoul(argv[1], NULL, 16);
+		break;
+	case MODE_GO:
+		sdisp(1);
+		hwconf_send();
+		comstat_send();
+		go_pc = strtoul(argv[0], NULL, 16);
+		if (argc >= 2)
+			go_sp = strtoul(argv[1], NULL, 16);
 		break;
 	default:
 		errx(1, "unknown mode");
