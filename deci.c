@@ -123,6 +123,7 @@ bool add_queue(struct decipkt *pkt, struct decipkt *queue[], int *num_queue)
 	free(blob);
 	return true;
 }
+
 bool add_queue_real(struct decipkt *pkt, struct decipkt *queue[], int *num_queue)
 {
 	int slot;
@@ -193,17 +194,21 @@ bool sdisp(uint32_t opt)
 	struct decipkt *pkt = new_packet(sizeof(uint32_t));
 	*(uint32_t *)pkt->body = htole32(opt);
 	pkt->hdr.category = CAT_TTY;
-	pkt->hdr.priority = 0x3c;
+	pkt->hdr.priority = PRI_TTY;
 	pkt->hdr.req = REQ_SDISPCTRL;
 	return add_send_queue(pkt);
 }
 
 bool reset_send(uint32_t opt)
 {
-	struct decipkt *pkt = new_packet(sizeof(uint32_t));
-	*(uint32_t *)pkt->body = htole32(opt);
-	pkt->hdr.category = CAT_TPKT;
-	pkt->hdr.priority = 10;
+	struct decipkt *pkt = new_packet(sizeof(uint32_t)*1);
+	uint32_t *body = pkt->body;
+	body[0] = htole32(opt);
+	//body[1] = htole32(0x44450000);
+	//body[2] = htole32(0x544d0001);
+	//body[2] = htole32(0x54540002);
+	pkt->hdr.category = CAT_T;
+	pkt->hdr.priority = PRI_T;
 	pkt->hdr.req = REQ_TRESET;
 	return add_send_queue(pkt);
 }
@@ -235,7 +240,7 @@ bool priority_over(struct decipkt *a, struct decipkt *b)
 	if (cat_b >= cat_a) return false;
 	return true;
 }
-
+#if 0
 void acknak(struct decipkt *pkt)
 {
 	if (pkt->hdr.priority || pkt->hdr.category) {
@@ -260,7 +265,7 @@ void acknak(struct decipkt *pkt)
 	}
 	// TODO
 }
-
+#endif
 bool comstat_send()
 {
 	struct decipkt *pkt = new_packet(0);
@@ -282,6 +287,13 @@ bool hwconf_send()
 	return add_send_queue(pkt);
 }
 
+bool getinfo_send()
+{
+	struct decipkt *pkt = new_packet(0);
+	pkt->hdr.req = REQ_ZGETINFO;
+	return add_send_queue(pkt);
+}
+
 bool myacknak(uint8_t ack, uint8_t nak)
 {
 	struct decipkt *pkt = new_packet(2);
@@ -289,5 +301,82 @@ bool myacknak(uint8_t ack, uint8_t nak)
 	buf[0] = ack;
 	buf[1] = nak;
 	pkt->hdr.req = REQ_ZACKNAK;
+	return add_send_queue(pkt);
+}
+
+bool d_idk_send(uint32_t code)
+{
+	struct decipkt *pkt = new_packet(0x8);
+	uint32_t *buf = (uint32_t *)pkt->body;
+	buf[0] = 0x100;
+	buf[1] = 0x200;
+	pkt->hdr.req = 0x44040201;
+	pkt->hdr.category = 0x1e;
+	pkt->hdr.priority = 0x1f;
+	pkt->hdr.tag = 0;
+	return add_send_queue(pkt);
+}
+
+bool tmode_send(uint32_t mode)
+{
+	struct decipkt *pkt = new_packet(4);
+	uint32_t *buf = (uint32_t *)pkt->body;
+	buf[0] = htole32(mode);
+	pkt->hdr.req = REQ_TMODE;
+	pkt->hdr.category = CAT_T;
+	pkt->hdr.priority = PRI_T;
+	pkt->hdr.tag = 0;
+	return add_send_queue(pkt);
+}
+
+bool isetbootname_send(const char *name)
+{
+	struct decipkt *pkt = new_packet(sizeof(struct isetbootname_body_s));
+	struct isetbootname_body_s *body = (struct isetbootname_body_s *)pkt->body;
+	strncpy(body->name, name, sizeof(body->name) - 1);
+	pkt->hdr.req = REQ_ISETBOOTNAME;
+	pkt->hdr.category = CAT_IPL;
+	pkt->hdr.priority = PRI_IPL;
+	pkt->hdr.tag = 0x77;
+	return add_send_queue(pkt);
+}
+
+bool idownload_send(uint32_t addr, uint32_t len, uint8_t *data)
+{
+	if (!data) return false;
+	struct decipkt *pkt = new_packet(sizeof(struct idownload_body_s) + len);
+	struct idownload_body_s *body = (struct idownload_body_s *)pkt->body;
+	body->addr = htole32(addr);
+	body->len = htole32(len);
+	memcpy(body->data, data, len);
+
+	pkt->hdr.req = REQ_IDOWNLOAD;
+	pkt->hdr.category = CAT_IPL;
+	pkt->hdr.priority = PRI_IPL;
+	pkt->hdr.tag = 0x88;
+	return add_send_queue(pkt);
+}
+
+bool irun_send(struct psxexe_s *exe)
+{
+	if (!exe) return false;
+	struct decipkt *pkt = new_packet(sizeof(struct irun_body_s) + 11);
+	struct irun_body_s *body = (struct irun_body_s *)pkt->body;
+	body->pc = exe->pc;
+	body->gp = exe->gp;
+	body->vma = exe->vma;
+	body->size = exe->size;
+	body->bss_addr = exe->bss_addr;
+	body->bss_size = exe->bss_size;
+	body->sp_fp_base = exe->sp_fp_base;
+	body->sp_fp_offset = exe->sp_fp_offset;
+	body->flag = htole32(1);
+	body->namelen = htole32(11);
+	strcpy((char *)body->name, "cdexec.exe");
+
+	pkt->hdr.req = REQ_IRUN;
+	pkt->hdr.category = CAT_IPL;
+	pkt->hdr.priority = PRI_IPL;
+	pkt->hdr.tag = 0x99;
 	return add_send_queue(pkt);
 }

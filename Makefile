@@ -1,9 +1,9 @@
-target  ?= main
+targets = reset15
 objects := $(patsubst %.c,%.o,$(wildcard *.c))
 
 libs:=
 
-#EXTRAS += -fsanitize=undefined -fsanitize=null -fcf-protection=full -fstack-protector-all -fstack-check -Wimplicit-fallthrough -fanalyzer -Wall
+EXTRAS += -fsanitize=undefined -fsanitize=null -fcf-protection=full -fstack-protector-all -fstack-check -Wimplicit-fallthrough -fanalyzer -Wall
 
 ifdef libs
 LDLIBS  += $(shell pkg-config --libs   ${libs})
@@ -14,10 +14,12 @@ LDFLAGS += ${EXTRAS}
 CFLAGS  += -std=gnu2x -Og -ggdb ${EXTRAS}
 
 .PHONY: all
-all:	$(target)
+all:	$(targets)
 
 .PHONY: clean
 clean:
-	rm -f $(target) $(objects)
+	rm -f $(targets) $(objects)
 
-$(target): $(objects)
+reset15: deci.o hexdump.o reset15.o mapfile.o
+
+
