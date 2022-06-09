@@ -16,15 +16,6 @@
 #define REQ_ZCOMSTAT		(0x01040100)
 #define REQ_ZALLRETRY		(0x01050100)
 #define REQ_ZGETINFO		(0x01060100)
-#define REQ_DRUN		(0)
-#define REQ_DCONTINUE		(0)
-#define REQ_DBREAK		(0)
-#define REQ_DGETREG		(0)
-#define REQ_DPUTREG		(0)
-#define REQ_DMEMWRITE		(0)
-#define REQ_DMEMREAD		(0)
-#define REQ_DMEMFILL		(0)
-#define REQ_DHALT		(0)
 #define REQ_D_01		(0x44010100)
 #define REQ_D_02		(0x44020000)
 #define REQ_D_03		(0x44030000)
@@ -34,6 +25,15 @@
 #define REQ_D_07		(0x44070100)
 #define REQ_D_08		(0x44080201)
 #define REQ_D_IDK		(0x44810000)
+#define REQ_DRUN		(0)
+#define REQ_DCONTINUE		(0)
+#define REQ_DBREAK		(0)
+#define REQ_DGETREG		(0)
+#define REQ_DPUTREG		(0)
+#define REQ_DMEMWRITE		(REQ_D_07)
+#define REQ_DMEMREAD		(REQ_D_06)
+#define REQ_DMEMFILL		(0)
+#define REQ_DHALT		(0)
 #define REQ_FOPEN		(0x46010001)
 #define REQ_FCLOSE		(0x46020001)
 #define REQ_FREAD		(0x46030201)
@@ -50,7 +50,7 @@
 #define REQ_TGETHWCONFIG	(0x54020201)
 #define REQ_TGETCOMSTAT		(0x54030201)
 #define REQ_TMODE		(0x54040000)
-#define REQ_T_06		(0x54060000)
+#define REQ_TDBGON		(0x54060000)
 #define REQ_T_07		(0x54070100)
 #define REQ_T_08		(0x54080101)
 #define REQ_T_0A		(0x540A0000)
@@ -66,6 +66,7 @@
 
 /* priorities */
 #define PRI_T		(0x0000000A)
+#define PRI_DBG		(0x0000001E)
 #define PRI_IPL		(0x00000028)
 #define PRI_TTY		(0x0000003C)
 
@@ -93,7 +94,7 @@ struct decipkt {
 };
 
 struct idownload_body_s {
-	uint32_t idk;
+	uint32_t flags;
 	uint32_t addr;
 	uint32_t len;
 	uint8_t data[]; // note: padded with zeros up to multiple of 4 bytes
@@ -147,6 +148,28 @@ struct fopen_body_s {
 	uint8_t name[];
 } __attribute__((packed));
 
+struct dmemread_body_s {
+	uint32_t zero;
+	uint32_t addr;
+	uint32_t idk8;
+	uint32_t n;
+	uint8_t data[];
+} __attribute__((packed));
+
+struct dmemwrite_body_s {
+	uint32_t flags;	// must be nonzero
+	uint32_t dest;
+	uint32_t nbytes;
+	uint32_t blocksize;
+	uint8_t data[];
+} __attribute__((packed));
+
+struct d_08_01_body_s {
+	uint32_t a;	// must be nonzero
+	uint32_t b;
+	uint32_t c;
+} __attribute__((packed));
+
 struct decipkt *new_packet(size_t body_size);
 void delete_packet(struct decipkt *pkt);
 void pkt_hton(struct decipkt *pkt);
@@ -174,4 +197,6 @@ bool idownload_send(uint32_t addr, uint32_t len, uint8_t *data);
 bool irun_send_exe(struct psxexe_s *exe);
 bool irun_send(uint32_t pc, uint32_t sp);
 bool tmode_send(uint32_t mode);
+bool dmemread_send(void *buf, uint32_t n, uint32_t src);
+bool tdbgon_send();
 #endif

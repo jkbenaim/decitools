@@ -30,6 +30,7 @@ uint32_t bload_addr = ~0;
 char *exe_filename = NULL;
 uint32_t go_pc = ~0;
 uint32_t go_sp = 0x801ffff0;
+char *setrun_name = NULL;
 
 enum mode_e {
 	MODE_IDK,
@@ -37,6 +38,8 @@ enum mode_e {
 	MODE_BLOAD,
 	MODE_RUN,
 	MODE_GO,
+	MODE_SETRUN,
+	MODE_MEMREAD,
 } mode = MODE_IDK;
 
 bool upload(uint8_t *buf, unsigned n, unsigned addr)
@@ -80,7 +83,7 @@ bool run_exe(char *filename)
 	ptr = (uint8_t *)m.data + 0x800;
 
 	struct psxexe_s *exe = (struct psxexe_s *)m.data;
-	if (memcmp(exe->magic, "PS-X EXE\0\0\0\0\0\0\0", 16))
+	if (memcmp(exe->magic, "PS-X EXEa", 8))
 		errx(1, "bad exe magic");
 
 	bytes_to_upload = le32toh(exe->size);
@@ -198,7 +201,12 @@ bool when_iplsvc_appears()
 		break;
 	case MODE_GO:
 		irun_send(go_pc, go_sp);
-		break;	
+		break;
+	case MODE_SETRUN:
+		isetbootname_send(setrun_name);
+		break;
+	case MODE_MEMREAD:
+		break;
 	default:
 		errx(1, "unknown mode");
 		break;
@@ -214,6 +222,10 @@ bool when_iplsvc_disappears()
 		break;
 	case MODE_GO:
 		exit_on_ipl = true;
+		break;
+	case MODE_SETRUN:
+		exit_on_ipl = true;
+		break;
 	default:
 		break;
 	}
@@ -232,17 +244,22 @@ int main(int argc, char *argv[])
 		mode = MODE_RUN;
 	} else if (!strcmp(__progname, "pgo15")) {
 		mode = MODE_GO;
+	} else if (!strcmp(__progname, "setrun15")) {
+		mode = MODE_SETRUN;
+	} else if (!strcmp(__progname, "memread")) {
+		mode = MODE_MEMREAD;
 	} else {
 		errx(1, "unknown program name");
 	}
 	
-
 	switch (mode) {
 	case MODE_RESET:
-		reset_send(0);
+		reset_send(2);
+		//tdbgon_send();
 		sdisp(1);
 		hwconf_send();
 		comstat_send();
+		//getinfo_send();
 		break;
 	case MODE_RUN:
 		sdisp(1);
@@ -264,6 +281,23 @@ int main(int argc, char *argv[])
 		go_pc = strtoul(argv[0], NULL, 16);
 		if (argc >= 2)
 			go_sp = strtoul(argv[1], NULL, 16);
+		break;
+	case MODE_SETRUN:
+		sdisp(1);
+		hwconf_send();
+		comstat_send();
+		setrun_name = argv[0];
+		break;
+	case MODE_MEMREAD:
+		sdisp(1);
+		hwconf_send();
+		comstat_send();
+	{
+		uint32_t size = 16;
+		void *buf = malloc(size);
+		if (!buf) err(1, "malloc failure");
+		dmemread_send(buf, size, 0x80000000);
+	}
 		break;
 	default:
 		errx(1, "unknown mode");
@@ -305,15 +339,15 @@ void print_comstat(uint8_t *buf, size_t bodysiz)
 		case CAT_T:   catname = "T   "; break;
 		case CAT_IPL:
 			catname = "IPL ";
-			when_iplsvc_appears();
 			iplsvc_appeared = true;
 			iplsvc_appeared_this_time = true;
+			when_iplsvc_appears();
 			break;
 		case CAT_FILE: catname = "FILE"; break;
 		case CAT_DBG: catname = "DBG "; break;
 		default: catname = "idk "; printf("idk=%x\n", comstat[i].cat); break;
 		}
-#if 0
+#if 1
 		printf("%s\t%xh\t%xh\n",
 			catname,
 			comstat[i].pri,
@@ -380,7 +414,7 @@ void print_hwconfig(uint8_t *buf, size_t bodysiz)
 		}
 	}
 
-	printf( " << PS ROM %08x-%08x >> %s\n",
+	printf( " << PS ROM %08x-%08x >>  %s\n",
 		hwconfig.date,
 		hwconfig.flags,
 		sysname
@@ -450,7 +484,7 @@ void process_packet(uint8_t *buf, size_t recvd)
 		printf("4481 again\n");
 		hexdump(buf, recvd);
 		myacknak(pkt->hdr.tag, 0);
-		d_idk_send(0);
+		d_idk_send(1);
 		break;
 	default:
 		printf("unknown packet request %08x\n", pkt->hdr.req);

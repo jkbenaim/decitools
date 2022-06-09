@@ -213,6 +213,15 @@ bool reset_send(uint32_t opt)
 	return add_send_queue(pkt);
 }
 
+bool tdbgon_send()
+{
+	struct decipkt *pkt = new_packet(0);
+	pkt->hdr.category = CAT_T;
+	pkt->hdr.priority = PRI_T;
+	pkt->hdr.req = REQ_TDBGON;
+	return add_send_queue(pkt);
+}
+
 void dump_packetq(struct decipkt *pkts[], int count)
 {
 	for (int i=0; i<count; i++) {
@@ -310,10 +319,10 @@ bool d_idk_send(uint32_t code)
 	uint32_t *buf = (uint32_t *)pkt->body;
 	buf[0] = 0x100;
 	buf[1] = 0x200;
-	pkt->hdr.req = 0x44040201;
+	pkt->hdr.req = REQ_D_IDK;
 	pkt->hdr.category = 0x1e;
 	pkt->hdr.priority = 0x1f;
-	pkt->hdr.tag = 0;
+	pkt->hdr.tag = 0x55;
 	return add_send_queue(pkt);
 }
 
@@ -360,7 +369,7 @@ bool idownload_send(uint32_t addr, uint32_t len, uint8_t *data)
 bool irun_send_exe(struct psxexe_s *exe)
 {
 	if (!exe) return false;
-	struct decipkt *pkt = new_packet(sizeof(struct irun_body_s) + 11);
+	struct decipkt *pkt = new_packet(sizeof(struct irun_body_s) + 13);
 	struct irun_body_s *body = (struct irun_body_s *)pkt->body;
 	body->pc = exe->pc;
 	body->gp = exe->gp;
@@ -383,7 +392,7 @@ bool irun_send_exe(struct psxexe_s *exe)
 
 bool irun_send(uint32_t pc, uint32_t sp)
 {
-	struct decipkt *pkt = new_packet(sizeof(struct irun_body_s) + 11);
+	struct decipkt *pkt = new_packet(sizeof(struct irun_body_s) + 13);
 	struct irun_body_s *body = (struct irun_body_s *)pkt->body;
 	body->pc = htole32(pc);
 	body->sp_fp_base = htole32(sp);
@@ -398,3 +407,19 @@ bool irun_send(uint32_t pc, uint32_t sp)
 	pkt->hdr.tag = 0x99;
 	return add_send_queue(pkt);
 }
+
+bool dmemread_send(void *buf, uint32_t n, uint32_t src)
+{
+	struct decipkt *pkt = new_packet(sizeof(struct dmemread_body_s) + n);
+	struct dmemread_body_s *body = (struct dmemread_body_s *)pkt->body;
+	body->zero = htole32(0);
+	body->addr = htole32(src);
+	body->n = htole32(n);
+
+	pkt->hdr.req = REQ_DMEMREAD;
+	pkt->hdr.category = CAT_DBG;
+	pkt->hdr.priority = PRI_DBG;
+	pkt->hdr.tag = 0x66;
+	return add_send_queue(pkt);
+}
+

@@ -1,7 +1,7 @@
-targets = decitools reset15 run15 bload15 pgo15
+targets = decitools reset15 run15 bload15 pgo15 setrun15 memread
 objects := $(patsubst %.c,%.o,$(wildcard *.c))
 
-#EXTRAS += -fsanitize=undefined -fsanitize=null -fcf-protection=full -fstack-protector-all -fstack-check -Wimplicit-fallthrough -fanalyzer -Wall
+EXTRAS += -fsanitize=undefined -fsanitize=null -fcf-protection=full -fstack-protector-all -fstack-check -Wimplicit-fallthrough -fanalyzer -Wall -flto
 
 LDFLAGS += ${EXTRAS}
 CFLAGS  += -ggdb ${EXTRAS}
@@ -27,3 +27,8 @@ bload15: decitools
 pgo15: decitools
 	ln -s $< $@
 
+setrun15: decitools
+	ln -s $< $@
+
+memread: decitools
+	ln -s $< $@
