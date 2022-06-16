@@ -1,34 +1,21 @@
-targets = decitools reset15 run15 bload15 pgo15 setrun15 memread
+target = decitools
+clones = reset15 bload15 run15 pgo15
 objects := $(patsubst %.c,%.o,$(wildcard *.c))
 
-EXTRAS += -fsanitize=undefined -fsanitize=null -fcf-protection=full -fstack-protector-all -fstack-check -Wimplicit-fallthrough -fanalyzer -Wall -flto
+#EXTRAS += -fsanitize=undefined -fsanitize=null -fcf-protection=full -fstack-protector-all -fstack-check -Wimplicit-fallthrough -fanalyzer -Wall -flto
 
 LDFLAGS += ${EXTRAS}
 CFLAGS  += -ggdb ${EXTRAS}
 
 .PHONY: all
-all:	$(targets)
+all:	$(target) $(clones)
 
 .PHONY: clean
 clean:
-	rm -f $(targets) $(objects)
+	rm -f $(target) $(clones) $(objects)
 
-decitools: deci.o hexdump.o decitools.o mapfile.o
+decitools: $(objects)
 
-reset15: decitools
+$(clones): decitools
 	ln -s $< $@
 
-run15: decitools
-	ln -s $< $@
-
-bload15: decitools
-	ln -s $< $@
-
-pgo15: decitools
-	ln -s $< $@
-
-setrun15: decitools
-	ln -s $< $@
-
-memread: decitools
-	ln -s $< $@

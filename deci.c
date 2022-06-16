@@ -1,15 +1,23 @@
-#include <endian.h>
-#include <err.h>
+#ifdef __MINGW32__
+#else
+#include <sys/socket.h>
+#endif
+#include "endian.h"
+#include "err.h"
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#include <sys/socket.h>
 #include "deci.h"
 #include "hexdump.h"
+#include "intl.h"
 
+#ifdef __MINGW32__
+extern unsigned sock;
+#else
 extern int sock;
+#endif
 
 struct decipkt *send_queue[100];
 struct decipkt *wait_queue[100];
@@ -22,7 +30,7 @@ int timeoutval;
 struct decipkt *new_packet(size_t body_size)
 {
 	struct decipkt *pkt = calloc(sizeof(struct decipkt), 1);
-	if (pkt == NULL) err(1, "new_packet malloc");
+	if (pkt == NULL) err(1, N_("new_packet malloc"));
 	if (body_size != 0) {
 		pkt->body = calloc(body_size, 1);
 		if (pkt->body == NULL) err(1, "new_packet body malloc");

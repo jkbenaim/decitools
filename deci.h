@@ -3,7 +3,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
-#include <endian.h>
+#include "endian.h"
 
 #include "psxexe.h"
 

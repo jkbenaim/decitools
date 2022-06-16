@@ -1,0 +1,21 @@
+target = decitools
+clones = reset15.exe bload15.exe run15.exe pgo15.exe
+objects := $(patsubst %.c,%.o,$(wildcard *.c))
+
+#EXTRAS += -fcf-protection=full -fstack-protector-all -fstack-check -Wimplicit-fallthrough -fanalyzer -Wall -flto
+
+LDFLAGS += ${EXTRAS}
+LDLIBS  += -lws2_32
+CFLAGS  += -ggdb ${EXTRAS}
+
+.PHONY: all
+all:	$(target) $(clones)
+
+.PHONY: clean
+clean:
+	rm -f $(target).exe $(clones) $(objects)
+
+decitools: $(objects)
+
+$(clones): decitools
+	cp $<.exe $@

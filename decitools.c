@@ -1,16 +1,21 @@
+#ifdef __MINGW32__
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#else
 #include <arpa/inet.h>
-#include <endian.h>
-#include <err.h>
+#include <netinet/in.h>
+#include <sys/poll.h>
+#include <sys/socket.h>
+#endif
+#include "endian.h"
+#include "err.h"
 #include <inttypes.h>
 #include <iso646.h>
-#include <netinet/in.h>
-#include <poll.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdnoreturn.h>
 #include <string.h>
-#include <sys/socket.h>
 #include <unistd.h>
 #include <time.h>
 
@@ -18,12 +23,22 @@
 #include "hexdump.h"
 #include "mapfile.h"
 #include "psxexe.h"
+#include "intl.h"
 
+#ifdef __MINGW32__
+char *__progname;
+#else
 extern char *__progname;
+#endif
+
 static void noreturn usage(void);
 void process_packet(uint8_t *buf, size_t recvd);
 
+#ifdef __MINGW32__
+unsigned sock;
+#else
 int sock;
+#endif
 
 char *bload_filename = NULL;
 uint32_t bload_addr = ~0;
@@ -62,7 +77,7 @@ bool upload_file(char *filename, unsigned addr)
 	struct MappedFile_s m;
 	bool rc;
 	m = MappedFile_Open(filename, false);
-	if (!m.data) err(1, "couldn't open '%s' for reading", filename);
+	if (!m.data) err(1, _("couldn't open '%s' for reading"), filename);
 	if (m.size == 0) return true;
 
 	rc = upload(m.data, m.size, addr);
@@ -79,7 +94,7 @@ bool run_exe(char *filename)
 	uint32_t addr;
 
 	m = MappedFile_Open(filename, false);
-	if (!m.data) err(1, "couldn't open '%s' for reading", filename);
+	if (!m.data) err(1, _("couldn't open '%s' for reading"), filename);
 	ptr = (uint8_t *)m.data + 0x800;
 
 	struct psxexe_s *exe = (struct psxexe_s *)m.data;
@@ -127,56 +142,69 @@ bool decisetup(int *argc, char **argv[])
 		ip = getenv("H1500");
 	}
 	if (ip == NULL) {
-		errx(1, "must specify machine with either the -m option, or the H1500 environment variable");
+		errx(1, _("must specify machine with either the -m option, or the H1500 environment variable"));
 	}
 
 	// get target port
 	zTmp = getenv("H1500PORT");
 	if (zTmp != NULL) {
 		port = strtoul(zTmp, NULL, 10);
-		if (port == 0) err(1, "invalid value for H1500PORT");
+		if (port == 0) err(1, _("invalid value for H1500PORT"));
 	} else {
 		port = 8155;
 	}
 
 	sock = socket(AF_INET, SOCK_STREAM, 0);
-	if (sock < 0) err(1, "couldn't open socket");
+#ifdef __MINGW32__
+	if (sock == INVALID_SOCKET)
+		errx(1, _("couldn't open socket: %d"), WSAGetLastError());
+#else
+	if (sock < 0)
+		err(1, _("couldn't open socket"));
+#endif
 
 	memset(&address, '0', sizeof(address));
 	address.sin_family = AF_INET;
 	address.sin_port = htons(port);
 	if (inet_pton(AF_INET, ip, &address.sin_addr) <= 0)
-		err(1, "bad ip");
+		err(1, _("couldn't parse IP address"));
 	
 	if (connect(sock, (struct sockaddr *)&address,
 		sizeof(address)) < 0)
-		err(1, "couldn't connect");
+		err(1, _("couldn't connect to H1500"));
 	return true;
 }
 
 bool deciloop()
 {
-	struct pollfd fds[1] = {0};
 	uint8_t *buf = malloc(BUFSIZ);
 	size_t recvd;
+#ifdef __MINGW32__
+	fd_set fds;
+	FD_ZERO(&fds);
+	FD_SET(sock, &fds);
+#else
+	struct pollfd fds[1] = {0};
 	fds[0].fd = sock;
 	fds[0].events = POLLIN;
 	fds[0].revents = 0;
+#endif
 
+#ifdef __MINGW32__
+	while(select(1, &fds, NULL, NULL, NULL) != SOCKET_ERROR) {
+#else
 	while(poll(fds, 1, -1) != -1) {
-		if (fds[0].revents & POLLIN) {
-			recvd = read(fds[0].fd, buf, BUFSIZ);
-			if (recvd == -1) err(1, "couldn't read from sock");
-			//printf("received size: %lu\n", recvd);
-			unsigned cur = 0;
-			struct decihdr *hdr;
-			do {
-				hdr = (struct decihdr *)(buf+cur);
-				size_t size = le16toh(hdr->size);
-				process_packet(buf+cur, size);
-				cur += size;
-			} while(cur < recvd);
-		}
+#endif
+		recvd = recv(sock, buf, BUFSIZ, 0);
+		if (recvd == -1) err(1, _("couldn't read from socket"));
+		unsigned cur = 0;
+		struct decihdr *hdr;
+		do {
+			hdr = (struct decihdr *)(buf+cur);
+			size_t size = le16toh(hdr->size);
+			process_packet(buf+cur, size);
+			cur += size;
+		} while(cur < recvd);
 	}
 
 	close(sock);
@@ -208,7 +236,7 @@ bool when_iplsvc_appears()
 	case MODE_MEMREAD:
 		break;
 	default:
-		errx(1, "unknown mode");
+		errx(1, _("unknown program mode"));
 		break;
 	}
 	return true;
@@ -234,6 +262,18 @@ bool when_iplsvc_disappears()
 
 int main(int argc, char *argv[])
 {
+#ifdef __MINGW32__
+	int rc;
+	char *temp;
+	WSADATA wsaData;
+	WORD wVersionRequested = MAKEWORD(2, 2);
+	rc = WSAStartup(wVersionRequested, &wsaData);
+	if (rc)
+		errx(1, _("couldn't initialize Windows Sockets: %d\n"), rc);
+	__progname = strrchr(argv[0], '\\') + 1;
+	temp = strrchr(argv[0], '.');
+	if (temp) temp[0] = '\0';
+#endif
 	decisetup(&argc, &argv);
 
 	if (!strcmp(__progname, "reset15")) {
@@ -249,7 +289,7 @@ int main(int argc, char *argv[])
 	} else if (!strcmp(__progname, "memread")) {
 		mode = MODE_MEMREAD;
 	} else {
-		errx(1, "unknown program name");
+		errx(1, _("unknown program name"));
 	}
 	
 	switch (mode) {
@@ -300,7 +340,7 @@ int main(int argc, char *argv[])
 	}
 		break;
 	default:
-		errx(1, "unknown mode");
+		errx(1, _("unknown program mode"));
 		break;
 	}
 
@@ -347,7 +387,7 @@ void print_comstat(uint8_t *buf, size_t bodysiz)
 		case CAT_DBG: catname = "DBG "; break;
 		default: catname = "idk "; printf("idk=%x\n", comstat[i].cat); break;
 		}
-#if 1
+#if 0
 		printf("%s\t%xh\t%xh\n",
 			catname,
 			comstat[i].pri,
@@ -386,7 +426,7 @@ void print_hwconfig(uint8_t *buf, size_t bodysiz)
 	} __attribute__((packed));
 
 	if (bodysiz < 44) {
-		printf("weird hwconfig, processing aborted\n");
+		printf(_("weird hwconfig, processing aborted\n"));
 		hexdump(buf, bodysiz);
 		return;
 	}
@@ -400,7 +440,7 @@ void print_hwconfig(uint8_t *buf, size_t bodysiz)
 	hwconfig.prid = le32toh(hwconfig.prid);
 	size_t size_from_packet = 4*(hwconfig.numfields+1) + hwconfig.sysname_len;
 	if (size_from_packet != bodysiz) {
-		printf("weird hwconfig, processing aborted\n");
+		printf(_("weird hwconfig, processing aborted\n"));
 		hexdump(buf, bodysiz);
 		return;
 	}
@@ -439,7 +479,7 @@ void fopen_handle(struct decipkt *pkt)
 	char *name = calloc(le32toh(body->namesize) + 1, 1);
 	if (!name) err(1, "malloc failure");
 	memcpy(name, body->name, le32toh(body->namesize));
-	printf("file open request: %s\n", name);
+	printf(_("received file open request: %s\n"), name);
 	free(name);
 	myacknak(pkt->hdr.tag, 0);
 }
@@ -470,7 +510,7 @@ void process_packet(uint8_t *buf, size_t recvd)
 		myacknak(pkt->hdr.tag, 0);
 		break;
 	case REQ_ZPANICMSG:
-		fprintf(stderr, "target panic: ");
+		fprintf(stderr, _("target panic: "));
 		fwrite(pkt->body, len - 0x20, 1, stderr);
 		exit(0);
 		break;
@@ -487,7 +527,7 @@ void process_packet(uint8_t *buf, size_t recvd)
 		d_idk_send(1);
 		break;
 	default:
-		printf("unknown packet request %08x\n", pkt->hdr.req);
+		printf(_("unknown packet request %08x\n"), pkt->hdr.req);
 		hexdump(buf, recvd);
 		myacknak(pkt->hdr.tag, 0);
 		break;
@@ -497,7 +537,7 @@ void process_packet(uint8_t *buf, size_t recvd)
 
 static void noreturn usage(void)
 {
-	(void)fprintf(stderr, "usage: %s -m machine\n",
+	(void)fprintf(stderr, _("usage: %s -m machine\n"),
 		__progname
 	);
 	exit(EXIT_FAILURE);
