@@ -12,6 +12,7 @@
 #include "deci.h"
 #include "hexdump.h"
 #include "intl.h"
+#include "errnet.h"
 
 #ifdef __MINGW32__
 extern unsigned sock;
@@ -125,7 +126,7 @@ bool add_queue(struct decipkt *pkt, struct decipkt *queue[], int *num_queue)
 		memcpy(blob + 0x20, mypkt.body, pkt->hdr.size - 0x20);
 
 	sz = send(sock, blob, pkt->hdr.size, 0);
-	if (sz == -1) err(1, "couldn't send");
+	if (sz == -1) errnet(1, "couldn't send");
 
 	delete_packet(pkt);
 	free(blob);

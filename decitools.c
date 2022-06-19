@@ -166,12 +166,19 @@ bool decisetup(int *argc, char **argv[])
 	memset(&address, '0', sizeof(address));
 	address.sin_family = AF_INET;
 	address.sin_port = htons(port);
+#ifdef __MINGW32__
+	unsigned long ulAddr = inet_addr(ip);
+	if ((ulAddr == INADDR_NONE)
+		|| (ulAddr == INADDR_ANY))
+		err(1, _("couldn't parse IP address"));
+	address.sin_addr.S_un.S_addr = ulAddr;
+#else
 	if (inet_pton(AF_INET, ip, &address.sin_addr) <= 0)
 		err(1, _("couldn't parse IP address"));
-	
+#endif
 	if (connect(sock, (struct sockaddr *)&address,
 		sizeof(address)) < 0)
-		err(1, _("couldn't connect to H1500"));
+		errnet(1, _("couldn't connect to H1500"));
 	return true;
 }
 
@@ -269,8 +276,10 @@ int main(int argc, char *argv[])
 	WORD wVersionRequested = MAKEWORD(2, 2);
 	rc = WSAStartup(wVersionRequested, &wsaData);
 	if (rc)
-		errx(1, _("couldn't initialize Windows Sockets: %d\n"), rc);
-	__progname = strrchr(argv[0], '\\') + 1;
+		errnet(1, _("couldn't initialize Windows Sockets"));
+	__progname = strrchr(argv[0], '\\');
+	if (!__progname) __progname = argv[0];
+	else __progname++;
 	temp = strrchr(argv[0], '.');
 	if (temp) temp[0] = '\0';
 #endif
