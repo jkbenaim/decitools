@@ -9,6 +9,7 @@
 #endif
 #include "endian.h"
 #include "err.h"
+#include "errnet.h"
 #include <inttypes.h>
 #include <iso646.h>
 #include <stdbool.h>
@@ -57,10 +58,36 @@ enum mode_e {
 	MODE_MEMREAD,
 } mode = MODE_IDK;
 
+bool packet_pump();
+
+#ifdef __MINGW32__
+void term_normal()
+{
+	HANDLE h = GetStdHandle(STD_OUTPUT_HANDLE);
+	SetConsoleTextAttribute(h,
+		FOREGROUND_RED|FOREGROUND_GREEN|FOREGROUND_BLUE);
+}
+void term_whisper()
+{
+	HANDLE h = GetStdHandle(STD_OUTPUT_HANDLE);
+	SetConsoleTextAttribute(h, FOREGROUND_INTENSITY);
+}
+#else
+void term_normal()	{printf("\e[0m");}
+void term_whisper()	{printf("\e[02m");}
+#endif
+
 bool upload(uint8_t *buf, unsigned n, unsigned addr)
 {
 	bool rc;
 	unsigned bytes_uploaded = 0;
+	unsigned progress = 0;
+	unsigned oldprogress = 0;
+
+	term_whisper();
+	printf("(uploading");
+	fflush(stdout);
+
 	while (bytes_uploaded < n) {
 		uint32_t chunk_size = n - bytes_uploaded;
 		if (chunk_size > 0xfd4) chunk_size = 0xfd4;
@@ -68,7 +95,20 @@ bool upload(uint8_t *buf, unsigned n, unsigned addr)
 		buf += chunk_size;
 		bytes_uploaded += chunk_size;
 		if (!rc) return false;
+		term_normal();
+		packet_pump();
+		term_whisper();
+		progress = 10*bytes_uploaded / n;
+		if (progress > oldprogress) {
+			for (unsigned i = 0; i < (progress - oldprogress); i++)
+				printf(".");
+			fflush(stdout);
+			oldprogress = progress;
+		}
 	}
+	printf(" done.)\n");
+	term_normal();
+	fflush(stdout);
 	return true;
 }
 
@@ -162,7 +202,6 @@ bool decisetup(int *argc, char **argv[])
 	if (sock < 0)
 		err(1, _("couldn't open socket"));
 #endif
-
 	memset(&address, '0', sizeof(address));
 	address.sin_family = AF_INET;
 	address.sin_port = htons(port);
@@ -182,10 +221,26 @@ bool decisetup(int *argc, char **argv[])
 	return true;
 }
 
+uint8_t buf[BUFSIZ];
+
+bool packet_pump()
+{
+	size_t recvd;
+	recvd = recv(sock, buf, BUFSIZ, 0);
+	//if (recvd == -1) err(1, _("couldn't read from socket"));
+	unsigned cur = 0;
+	struct decihdr *hdr;
+	do {
+		hdr = (struct decihdr *)(buf+cur);
+		size_t size = le16toh(hdr->size);
+		process_packet(buf+cur, size);
+		cur += size;
+	} while(cur < recvd);
+	return true;
+}
+
 bool deciloop()
 {
-	uint8_t *buf = malloc(BUFSIZ);
-	size_t recvd;
 #ifdef __MINGW32__
 	fd_set fds;
 	FD_ZERO(&fds);
@@ -202,16 +257,7 @@ bool deciloop()
 #else
 	while(poll(fds, 1, -1) != -1) {
 #endif
-		recvd = recv(sock, buf, BUFSIZ, 0);
-		if (recvd == -1) err(1, _("couldn't read from socket"));
-		unsigned cur = 0;
-		struct decihdr *hdr;
-		do {
-			hdr = (struct decihdr *)(buf+cur);
-			size_t size = le16toh(hdr->size);
-			process_packet(buf+cur, size);
-			cur += size;
-		} while(cur < recvd);
+		packet_pump();
 	}
 
 	close(sock);
