@@ -1,6 +1,6 @@
 target = decitools
 clones = reset15.exe bload15.exe run15.exe pgo15.exe
-objects := $(patsubst %.c,%.o,$(wildcard *.c))
+objects := deci.o decitools.o errnet.o hexdump.o mapfile.o
 
 #EXTRAS += -fcf-protection=full -fstack-protector-all -fstack-check -Wimplicit-fallthrough -fanalyzer -Wall -flto
 
