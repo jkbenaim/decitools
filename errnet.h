@@ -9,10 +9,10 @@ void noreturn verrnet(int eval, const char *fmt, va_list args);
 void warnnet(const char *fmt, ...);
 void noreturn errnet(int eval, const char *fmt, ...);
 #else
-#define vwarnnet(...) vwarn(...)
-#define verrnet(...) verr(...)
-#define warnnet(...) warn(...)
-#define errnet(...) err(...)
+#define vwarnnet vwarn
+#define verrnet verr
+#define warnnet warn
+#define errnet err
 #endif
 
 #endif
