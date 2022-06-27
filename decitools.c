@@ -460,26 +460,47 @@ void print_hwconfig(uint8_t *buf, size_t bodysiz)
 {
 	struct hwconfig {
 		uint32_t numfields;
-		uint32_t date;
-		uint32_t flags;
-		uint32_t sysname_len;
-		uint32_t prid;
-		uint32_t idk1;
-		uint32_t max_pkt_size;
-		uint32_t idk3;
-		uint32_t idk4;
-		uint32_t idk5;
-		uint32_t idk6;
-		uint32_t idk7;
-		uint32_t idk8;
-		uint32_t idk9;
-		uint32_t idkA;
-		uint32_t idkB;
-		uint32_t idkC;
-		uint32_t idkD;
-		char sysname[];
+		union {
+			struct {
+				uint32_t romdate;
+				uint32_t romtype;
+				uint32_t romname_len;
+				uint32_t cpu_prid;
+				uint32_t board_id;
+				uint32_t ram_size;
+				uint32_t gpu_type;
+				uint32_t vram_size;
+				uint32_t spu_type;
+				uint32_t spu_ram_size;
+				uint32_t debugger_type;
+				uint32_t host_if_type;
+				uint32_t pad_present;
+				uint32_t memcard_present;
+				uint32_t cdrom_present;
+				uint32_t host_if_bufsize;
+			};
+			uint32_t fields[16];
+		};
+		char romname[];
 	} __attribute__((packed));
-
+	const char *fieldnames[] = {
+		"rom date",
+		"rom type",
+		"rom name len",
+		"cpu type",
+		"board id",
+		"ram size",
+		"gpu type",
+		"vram size",
+		"spu type",
+		"spu ram size",
+		"debugger type",
+		"host if type",
+		"pad present",
+		"memcard present",
+		"cdrom present",
+		"host bufsize",
+	};
 	if (bodysiz < 44) {
 		printf(_("weird hwconfig, processing aborted\n"));
 		hexdump(buf, bodysiz);
@@ -488,34 +509,38 @@ void print_hwconfig(uint8_t *buf, size_t bodysiz)
 
 	struct hwconfig hwconfig;
 	memcpy(&hwconfig, buf, sizeof(hwconfig));
-	hwconfig.numfields = le32toh(hwconfig.numfields);
-	hwconfig.date = le32toh(hwconfig.date);
-	hwconfig.flags = le32toh(hwconfig.flags);
-	hwconfig.sysname_len = le32toh(hwconfig.sysname_len);
-	hwconfig.prid = le32toh(hwconfig.prid);
-	size_t size_from_packet = 4*(hwconfig.numfields+1) + hwconfig.sysname_len;
+	for (unsigned i = 0; i < 16; i++) {
+		hwconfig.fields[i] = le32toh(hwconfig.fields[i]);
+	}
+
+	size_t size_from_packet = 4*(hwconfig.numfields+1) + hwconfig.romname_len;
 	if (size_from_packet != bodysiz) {
 		printf(_("weird hwconfig, processing aborted\n"));
 		hexdump(buf, bodysiz);
 		return;
 	}
-	char *sysname = (char *)calloc(1, hwconfig.sysname_len);
-	if (!sysname) err(1, "hwconfig malloc");
-	memcpy(sysname, buf + 0x44, hwconfig.sysname_len);
-	for (int i=0; i<hwconfig.sysname_len; i++) {
-		if ((sysname[i] < ' ') || (sysname[i] > '~')) {
-			sysname[i] = '\0';
+	char *romname = (char *)calloc(1, hwconfig.romname_len);
+	if (!romname) err(1, "hwconfig malloc");
+	memcpy(romname, buf + 0x44, hwconfig.romname_len);
+	for (int i=0; i<hwconfig.romname_len; i++) {
+		if ((romname[i] < ' ') || (romname[i] > '~')) {
+			romname[i] = '\0';
 			break;
 		}
 	}
 
 	printf( " << PS ROM %08x-%08x >>  %s\n",
-		hwconfig.date,
-		hwconfig.flags,
-		sysname
+		hwconfig.romdate,
+		hwconfig.romtype,
+		romname
 	);
-	//hexdump(&hwconfig, sizeof(hwconfig));
-	free(sysname);
+	term_whisper();
+	for (unsigned i = 3; i<0x10; i++) {
+		printf("%s\t%-8u\n", fieldnames[i], hwconfig.fields[i]);
+	}
+	term_normal();
+	fflush(stdout);
+	free(romname);
 }
 
 void print_getinfo(uint8_t *buf, size_t bodysiz)
