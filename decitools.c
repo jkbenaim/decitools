@@ -56,6 +56,8 @@ enum mode_e {
 	MODE_GO,
 	MODE_SETRUN,
 	MODE_MEMREAD,
+	MODE_GETREG,
+	MODE_PSCOMUTIL,
 } mode = MODE_IDK;
 
 bool packet_pump();
@@ -271,6 +273,7 @@ bool when_iplsvc_appears()
 	switch (mode) {
 	case MODE_RESET:
 		exit(0);
+		//tdbgon_send();
 		break;
 	case MODE_BLOAD:
 		upload_file(bload_filename, bload_addr);
@@ -287,6 +290,10 @@ bool when_iplsvc_appears()
 		isetbootname_send(setrun_name);
 		break;
 	case MODE_MEMREAD:
+		break;
+	case MODE_GETREG:
+		break;
+	case MODE_PSCOMUTIL:
 		break;
 	default:
 		errx(1, _("unknown program mode"));
@@ -305,6 +312,9 @@ bool when_iplsvc_disappears()
 		exit_on_ipl = true;
 		break;
 	case MODE_SETRUN:
+		exit_on_ipl = true;
+		break;
+	case MODE_PSCOMUTIL:
 		exit_on_ipl = true;
 		break;
 	default:
@@ -343,6 +353,10 @@ int main(int argc, char *argv[])
 		mode = MODE_SETRUN;
 	} else if (!strcmp(__progname, "memread")) {
 		mode = MODE_MEMREAD;
+	} else if (!strcmp(__progname, "getreg")) {
+		mode = MODE_GETREG;
+	} else if (!strcmp(__progname, "pscomutil")) {
+		mode = MODE_PSCOMUTIL;
 	} else {
 		errx(1, _("unknown program name"));
 	}
@@ -360,6 +374,7 @@ int main(int argc, char *argv[])
 		sdisp(1);
 		hwconf_send();
 		comstat_send();
+		//tdbgon_send();
 		exe_filename = *argv;
 		break;
 	case MODE_BLOAD:
@@ -394,6 +409,22 @@ int main(int argc, char *argv[])
 		dmemread_send(buf, size, 0x80000000);
 	}
 		break;
+	case MODE_GETREG:
+		//sdisp(1);
+		tdbgon_send();
+		//hwconf_send();
+		//comstat_send();
+		//dgetreg_send(1,2);
+		//tpalntsc_send(0);
+		//dcontinue_send(0);
+		//dmemread_send(NULL, 0x1000, 0xbfc00000);
+		break;
+	case MODE_PSCOMUTIL:
+		reset_send(2);
+		sdisp(1);
+		hwconf_send();
+		comstat_send();
+		break;
 	default:
 		errx(1, _("unknown program mode"));
 		break;
@@ -407,12 +438,6 @@ int main(int argc, char *argv[])
 
 void print_comstat(uint8_t *buf, size_t bodysiz)
 {
-	struct comstat {
-		uint32_t cat;
-		uint32_t pri;
-		uint32_t opt;
-	} __attribute__((packed));
-
 	static bool iplsvc_appeared = false;
 
 	struct comstat *comstat = malloc(bodysiz);
@@ -442,7 +467,7 @@ void print_comstat(uint8_t *buf, size_t bodysiz)
 		case CAT_DBG: catname = "DBG "; break;
 		default: catname = "idk "; printf("idk=%x\n", comstat[i].cat); break;
 		}
-#if 0
+#if 1
 		printf("%s\t%xh\t%xh\n",
 			catname,
 			comstat[i].pri,
@@ -458,31 +483,6 @@ void print_comstat(uint8_t *buf, size_t bodysiz)
 
 void print_hwconfig(uint8_t *buf, size_t bodysiz)
 {
-	struct hwconfig {
-		uint32_t numfields;
-		union {
-			struct {
-				uint32_t romdate;
-				uint32_t romtype;
-				uint32_t romname_len;
-				uint32_t cpu_prid;
-				uint32_t board_id;
-				uint32_t ram_size;
-				uint32_t gpu_type;
-				uint32_t vram_size;
-				uint32_t spu_type;
-				uint32_t spu_ram_size;
-				uint32_t debugger_type;
-				uint32_t host_if_type;
-				uint32_t pad_present;
-				uint32_t memcard_present;
-				uint32_t cdrom_present;
-				uint32_t host_if_bufsize;
-			};
-			uint32_t fields[16];
-		};
-		char romname[];
-	} __attribute__((packed));
 	const char *fieldnames[] = {
 		"rom date",
 		"rom type",
@@ -564,6 +564,41 @@ void fopen_handle(struct decipkt *pkt)
 	myacknak(pkt->hdr.tag, 0);
 }
 
+void print_dhalt(struct dhalt_body_s *body)
+{
+	uint32_t haltcode = le32toh(body->haltcode);
+	term_whisper();
+	switch (haltcode) {
+	case 0:
+		printf("DECI debugger start.\n");
+		break;
+	case 1:
+		printf("User program terminated by return.\n");
+		break;
+	case 2:
+		printf("User program terminated by exit().\n");
+		break;
+	case 3:
+		printf("User program break by Dbreak (polling mode).\n");
+		break;
+	case 4:
+		printf("User program break by Dbreak (interrupt mode).\n");
+		break;
+	case 5:
+		printf("CD BOOT pause.\n");
+		break;
+	case 6:
+		printf("User program break by Debug exception.\n");
+		break;
+	default:
+		printf("Halt: %xh.\n", haltcode);
+		dgetreg_send(0,0);
+		break;
+	}
+	term_normal();
+	fflush(stdout);
+}
+
 void process_packet(uint8_t *buf, size_t recvd)
 {
 	if (recvd < 0x20) return;
@@ -600,11 +635,14 @@ void process_packet(uint8_t *buf, size_t recvd)
 	case REQ_FOPEN:
 		fopen_handle(pkt);
 		break;
-	case 0x44810000:
-		printf("4481 again\n");
-		hexdump(buf, recvd);
+	case REQ_DHALT:
 		myacknak(pkt->hdr.tag, 0);
-		d_idk_send(1);
+		print_dhalt(pkt->body);
+		break;
+	case REQ_DGETREG:
+		printf("dgetreg:\n");
+		hexdump(buf, recvd);
+		//myacknak(pkt->hdr.ackcode, 0);
 		break;
 	default:
 		printf(_("unknown packet request %08x\n"), pkt->hdr.req);

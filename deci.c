@@ -54,7 +54,7 @@ void pkt_hton(struct decipkt *pkt)
 	pkt->hdr.size = htole16(pkt->hdr.size);
 	pkt->hdr.category = htole32(pkt->hdr.category);
 	pkt->hdr.priority = htole16(pkt->hdr.priority);
-	pkt->hdr.rep = htole16(pkt->hdr.rep);
+	pkt->hdr.reply = htole16(pkt->hdr.reply);
 	pkt->hdr.cid = htole16(pkt->hdr.cid);
 	pkt->hdr.seq = htole16(pkt->hdr.seq);
 	pkt->hdr.req = htole32(pkt->hdr.req);
@@ -66,7 +66,7 @@ void pkt_ntoh(struct decipkt *pkt)
 	pkt->hdr.size = le16toh(pkt->hdr.size);
 	pkt->hdr.category = le32toh(pkt->hdr.category);
 	pkt->hdr.priority = le16toh(pkt->hdr.priority);
-	pkt->hdr.rep = le16toh(pkt->hdr.rep);
+	pkt->hdr.reply = le16toh(pkt->hdr.reply);
 	pkt->hdr.cid = le16toh(pkt->hdr.cid);
 	pkt->hdr.seq = le16toh(pkt->hdr.seq);
 	pkt->hdr.req = le32toh(pkt->hdr.req);
@@ -227,7 +227,7 @@ bool tdbgon_send()
 	struct decipkt *pkt = new_packet(0);
 	pkt->hdr.category = CAT_T;
 	pkt->hdr.priority = PRI_T;
-	pkt->hdr.req = REQ_TDBGON;
+	pkt->hdr.req = REQ_TDEBUGGER;
 	return add_send_queue(pkt);
 }
 
@@ -322,19 +322,6 @@ bool myacknak(uint8_t ack, uint8_t nak)
 	return add_send_queue(pkt);
 }
 
-bool d_idk_send(uint32_t code)
-{
-	struct decipkt *pkt = new_packet(0x8);
-	uint32_t *buf = (uint32_t *)pkt->body;
-	buf[0] = 0x100;
-	buf[1] = 0x200;
-	pkt->hdr.req = REQ_D_IDK;
-	pkt->hdr.category = 0x1e;
-	pkt->hdr.priority = 0x1f;
-	pkt->hdr.tag = 0x55;
-	return add_send_queue(pkt);
-}
-
 bool tmode_send(uint32_t mode)
 {
 	struct decipkt *pkt = new_packet(4);
@@ -419,7 +406,7 @@ bool irun_send(uint32_t pc, uint32_t sp)
 
 bool dmemread_send(void *buf, uint32_t n, uint32_t src)
 {
-	struct decipkt *pkt = new_packet(sizeof(struct dmemread_body_s) + n);
+	struct decipkt *pkt = new_packet(sizeof(struct dmemread_body_s));
 	struct dmemread_body_s *body = (struct dmemread_body_s *)pkt->body;
 	body->zero = htole32(0);
 	body->addr = htole32(src);
@@ -429,6 +416,51 @@ bool dmemread_send(void *buf, uint32_t n, uint32_t src)
 	pkt->hdr.category = CAT_DBG;
 	pkt->hdr.priority = PRI_DBG;
 	pkt->hdr.tag = 0x66;
+	pkt->hdr.reply = 1;
+	return add_send_queue(pkt);
+}
+
+bool dgetreg_send(uint32_t cpumask, uint32_t gpumask)
+{
+	struct decipkt *pkt = new_packet(sizeof(struct dgetreg_body_s));
+	struct dgetreg_body_s *body = (struct dgetreg_body_s *)pkt->body;
+
+	body->mask[0] = 0;
+	body->mask[1] = 3;
+	body->mask[2] = -1;
+	body->mask[3] = le32toh(0x7000);
+
+	pkt->hdr.req = REQ_DGETREG;
+	pkt->hdr.category = 0x1e;
+	pkt->hdr.priority = 0x1f;
+	pkt->hdr.tag = 0x68;
+	pkt->hdr.reply = 1;
+	return add_send_queue(pkt);
+}
+
+bool tpalntsc_send(uint32_t ispal)
+{
+	struct decipkt *pkt = new_packet(sizeof(struct tpalntsc_body_s));
+	struct tpalntsc_body_s *body = (struct tpalntsc_body_s *)pkt->body;
+	body->ispal = htole32(ispal);
+
+	pkt->hdr.req = REQ_TCOLORSYSTEM;
+	pkt->hdr.category = CAT_IPL;
+	pkt->hdr.priority = PRI_IPL;
+	pkt->hdr.tag = 0x78;
+	return add_send_queue(pkt);
+}
+
+bool dcontinue_send(uint32_t param)
+{
+	struct decipkt *pkt = new_packet(sizeof(struct dcontinue_body_s));
+	struct dcontinue_body_s *body = (struct dcontinue_body_s *)pkt->body;
+	body->param = htole32(param);
+
+	pkt->hdr.req = REQ_DCONTINUE;
+	pkt->hdr.category = 0x1e;
+	pkt->hdr.priority = 0x1f;
+	pkt->hdr.tag = 0x75;
 	return add_send_queue(pkt);
 }
 
